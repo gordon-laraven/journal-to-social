@@ -30,21 +30,29 @@ def _call_openai(system: str, user: str, max_tokens: int = 2000) -> str:
 
 
 def _call_gemini(system: str, user: str, max_tokens: int = 2000) -> str:
+    import time
     import requests
     api_key = os.environ["GEMINI_API_KEY"]
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-1.5-pro:generateContent?key={api_key}"
-    )
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {"maxOutputTokens": max_tokens},
     }
-    resp = requests.post(url, json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+
+    last_error = None
+    for attempt in range(4):
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        if resp.status_code == 503:
+            last_error = resp
+            time.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    last_error.raise_for_status()  # all retries exhausted, surface the final 503
 
 
 def call_llm(system: str, user: str, max_tokens: int = 2000) -> str:

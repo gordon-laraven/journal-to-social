@@ -27,11 +27,9 @@ def _stability_image(prompt: str) -> bytes:
 
 def _gemini_image(prompt: str) -> bytes:
     api_key = os.environ["GEMINI_API_KEY"]
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"imagen-3.0-generate-001:predict?key={api_key}"
-    )
-    resp = requests.post(url, json={"instances": [{"prompt": prompt}]}, timeout=60)
+    url = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict"
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, json={"instances": [{"prompt": prompt}]}, headers=headers, timeout=60)
     resp.raise_for_status()
     b64 = resp.json()["predictions"][0]["bytesBase64Encoded"]
     return base64.b64decode(b64)

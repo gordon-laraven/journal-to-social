@@ -44,7 +44,7 @@ def _call_gemini(system: str, user: str, max_tokens: int = 2000) -> str:
     last_error = None
     for attempt in range(4):
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
-        if resp.status_code == 503:
+        if resp.status_code in (429, 503):
             last_error = resp
             time.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s
             continue
@@ -52,7 +52,7 @@ def _call_gemini(system: str, user: str, max_tokens: int = 2000) -> str:
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
-    last_error.raise_for_status()  # all retries exhausted, surface the final 503
+    last_error.raise_for_status()  # all retries exhausted, surface the final error
 
 
 def call_llm(system: str, user: str, max_tokens: int = 2000) -> str:
@@ -89,26 +89,39 @@ more personal/narrative, one more instructive/practical, one more provocative/
 opinionated) — not 3 versions of the same draft with synonyms swapped."""
 
 
+def _extract_json(raw: str) -> str:
+    """Strip markdown code fences some models add despite instructions not to."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+    return text.strip()
+
+
 def generate_article_variations(journal_entry: str) -> list[dict]:
-    raw = call_llm(ARTICLE_SYSTEM_PROMPT, journal_entry, max_tokens=4000)
-    data = json.loads(raw)
+    raw = call_llm(ARTICLE_SYSTEM_PROMPT, journal_entry, max_tokens=12000)
+    data = json.loads(_extract_json(raw))
     return data["variations"]
 
 
 CAPTION_SYSTEM_PROMPT = """You write short social captions repurposing a Substack
-article link for a specific platform. Match that platform's real norms (length,
-tone, hashtag conventions, whether emoji fit). Include a hook, not just a
-description, and leave room for the article link to be appended separately.
-Return ONLY valid JSON: {"caption": "..."}"""
+article link, tailored to six different platforms at once: X, Threads, LinkedIn,
+Alignable, YouTube description, and TikTok. Match each platform's real norms
+(length, tone, hashtag conventions, whether emoji fit). Include a hook, not just
+a description, for each one, and leave room for the article link to be appended
+separately. Vary the angle and phrasing across platforms — don't just re-tone the
+same sentence six times.
+
+Return ONLY valid JSON in this exact shape, no preamble, no markdown fences:
+{"X": "...", "Threads": "...", "LinkedIn": "...", "Alignable": "...",
+ "YouTube description": "...", "TikTok": "..."}"""
 
 
-def generate_caption(platform: str, article_title: str, article_summary: str) -> str:
-    user = (
-        f"Platform: {platform}\nArticle title: {article_title}\n"
-        f"Article summary: {article_summary}\n\nWrite one caption for this platform."
-    )
-    raw = call_llm(CAPTION_SYSTEM_PROMPT, user, max_tokens=400)
-    return json.loads(raw)["caption"]
+def generate_all_captions(article_title: str, article_summary: str) -> dict:
+    user = f"Article title: {article_title}\nArticle summary: {article_summary}"
+    raw = call_llm(CAPTION_SYSTEM_PROMPT, user, max_tokens=1200)
+    return json.loads(_extract_json(raw))
 
 
 IMAGE_PROMPT_SYSTEM = """Given a Substack article, propose 4 distinct image concepts
@@ -119,5 +132,5 @@ Return ONLY valid JSON: {"prompts": ["...", "...", "...", "..."]}"""
 
 def generate_image_prompt_options(article_title: str, article_summary: str) -> list[str]:
     user = f"Title: {article_title}\nSummary: {article_summary}"
-    raw = call_llm(IMAGE_PROMPT_SYSTEM, user, max_tokens=500)
-    return json.loads(raw)["prompts"]
+    raw = call_llm(IMAGE_PROMPT_SYSTEM, user, max_tokens=800)
+    return json.loads(_extract_json(raw))["prompts"]

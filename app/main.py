@@ -7,7 +7,7 @@ load_dotenv()
 import streamlit as st
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from core.llm import generate_article_variations, generate_caption, generate_image_prompt_options
+from core.llm import generate_article_variations, generate_all_captions, generate_image_prompt_options
 from core.image_gen import generate_image
 from core.share_links import build_share_links
 from core.email_client import send_review_email, send_final_email
@@ -68,14 +68,7 @@ elif st.session_state.step == "finalize":
         with st.spinner("Generating image and captions..."):
             image_bytes = generate_image(prompt_choice)
             summary = chosen["body_markdown"][:400]
-            captions = {
-                "X": generate_caption("X", chosen["title"], summary),
-                "Threads": generate_caption("Threads", chosen["title"], summary),
-                "LinkedIn": generate_caption("LinkedIn", chosen["title"], summary),
-                "Alignable": generate_caption("Alignable", chosen["title"], summary),
-                "YouTube description": generate_caption("YouTube", chosen["title"], summary),
-                "TikTok": generate_caption("TikTok", chosen["title"], summary),
-            }
+            captions = generate_all_captions(chosen["title"], summary)
             links = build_share_links(
                 article_url=article_url,
                 article_title=chosen["title"],
